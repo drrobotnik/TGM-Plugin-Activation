@@ -585,14 +585,42 @@ if ( ! class_exists( 'TGM_Plugin_Activation' ) ) {
 				/** If the plugin is installed and active, check for minimum version argument before moving forward */
 				if ( is_plugin_active( $plugin['file_path'] ) ) {
 					/** A minimum version has been specified */
-					if ( isset( $plugin['version'] ) ) {
+					if ( isset( $plugin['version'] ) || isset( $plugin['repo'] ) ) {
 						if ( isset( $installed_plugins[$plugin['file_path']]['Version'] ) ) {
 							/** If the current version is less than the minimum required version, we display a message */
+							//var_dump($plugin['repo']);
 							if ( version_compare( $installed_plugins[$plugin['file_path']]['Version'], $plugin['version'], '<' ) ) {
 								if ( current_user_can( 'install_plugins' ) )
 									$message['notice_ask_to_update'][] = $plugin['name'];
 								else
 									$message['notice_cannot_update'][] = $plugin['name'];
+							}elseif( isset( $plugin['repo'] ) ){
+								/* check if there is a newer version of the plugin. */
+								if( false === ( $version_check = get_transient( 'tgm-version-check_'.$plugin['slug'] ) ) ){ //version check cache expired
+    								
+    								// run version check against live repo
+    								$args = array( 'headers' => array( 'Authorization' => 'token ' . $plugin['repo']['token'] ) );
+    								$data = wp_remote_get( $plugin['repo']['tag_url'], $args );
+
+    								if( !is_wp_error($data) && $data['response']['code'] == 200 ){
+    									$tags = json_decode($data['body']);
+    									$latest = (string)preg_replace("/[^0-9. ]/", '', $tags[0]->name);
+
+    									$version_check = set_transient( 'tgm-version-check_'.$plugin['slug'], $latest, $expiration = 60*60*24 ); // set to expire in 24 hours
+    								}
+								}
+								
+								if ( version_compare( $installed_plugins[$plugin['file_path']]['Version'], $version_check, '<' ) ) {
+									$install_link = true; // We need to display the 'install' action link
+									$install_link_count++;
+									if ( current_user_can( 'install_plugins' ) )
+										$message['notice_can_install_required'][] = $plugin['name'];
+									else
+										$message['notice_cannot_update'][] = $plugin['name'];
+								}
+
+
+								
 							}
 						}
 						/** Can't find the plugin, so iterate to the next condition */
